@@ -1,17 +1,19 @@
 #!/bin/bash
-
+debug=1
+[ $debug -eq 1 ] && echo "$(date) ### Start VBoxManage ###" >> /tmp/VBoxManage.log
 # Get path for WSL storage
-wslroot=$(wslpath $(reg.exe query "HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss" /s /v BasePath | awk 'BEGIN { FS = "[ \t]+" } ; /BasePath/{print $4}' | tr -d "[:cntrl:]"))
+wslroot=$(wslpath $(/mnt/c/Windows/System32/reg.exe query "HKCU\Software\Microsoft\Windows\CurrentVersion\Lxss" /s /v BasePath | awk 'BEGIN { FS = "[ \t]+" } ; /BasePath/{print $4}' | tr -d "[:cntrl:]"))
 
 # Initialize defaults
 is_next_path=0
 args=()
 
 for argument; do
+  [ $debug -eq 1 ] && echo "$(date) Raw Arg $argument" >> /tmp/VBoxManage.log
   # If the current argument is --medium expect path of the medium in next argument
   if [ "$argument" = '--medium' ]; then
     is_next_path=1
-  elif [ $is_next_path = 1 ]; then
+  elif [ $is_next_path = 1 ] || [[ "$argument" == /mnt/c/* ]] ; then
     # Packer tries to create floppy in the linux /tmp folder which is not representable in Windows. Replace it with direct storage path
     if [[ $argument == /tmp/* ]]; then
       argument="$wslroot/rootfs$argument"
@@ -21,10 +23,12 @@ for argument; do
     is_next_path=0
   fi
 
+  [ $debug -eq 1 ] && echo "$(date) Processed Arg $argument" >> /tmp/VBoxManage.log
   args+=("\"$argument\"")
 done
 
 # Redirect to Windows VBoxManage and convert Windows paths back to WSL paths
+[ $debug -eq 1 ] && echo "$(date) ${args[@]}" >> /tmp/VBoxManage.log
 echo "${args[@]}" | xargs /mnt/c/Program\ Files/Oracle/VirtualBox/VBoxManage.exe | sed -r '/[A-Za-z]:\\.*$/{h; s/(.*)([A-Za-z]:\\.*)$/\2/; s/(.+)/wslpath "\1"/e; H; x; s/(([A-Za-z]:\\.*)\n(.+))/\3/ }'
 
 # /[A-Za-z]:\\.*$/ # Find lines that end with Windows paths
@@ -39,3 +43,4 @@ echo "${args[@]}" | xargs /mnt/c/Program\ Files/Oracle/VirtualBox/VBoxManage.exe
         #   /mnt/c/Windows/Temp
 #    s/(([A-Za-z]:\\.*)\n(.+))/\3/ # Replace Windows path in the first line with the WSL path in the second line
 #  }
+[ $debug -eq 1 ] && echo "$(date) ### End VBoxManage ###" >> /tmp/VBoxManage.log
